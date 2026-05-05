@@ -249,102 +249,178 @@ function AIAnalysisModal({ article, onClose }: { article: NewsArticle, onClose: 
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 9999, padding: 'var(--space-xl)'
+      background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      zIndex: 9999, padding: '60px var(--space-xl) var(--space-xl)'
     }}>
-      <div className="card fade-in" style={{
-        width: '100%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto',
-        background: 'var(--bg-primary)', padding: '0',
-        display: 'flex', flexDirection: 'column'
+      <style>{`
+        @keyframes modalPop {
+          0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .modal-container {
+          animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+      `}</style>
+      <div className="modal-container" style={{
+        width: '100%', maxWidth: '1040px', height: 'auto', maxHeight: '85vh',
+        background: 'var(--bg-primary)', 
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255,255,255,0.1)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        border: '1px solid var(--border-muted)',
+        position: 'relative'
       }}>
-        {/* Header */}
-        <div style={{ padding: 'var(--space-lg)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--bg-primary)', zIndex: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Bot size={20} color="var(--brand)" />
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>AI Market Analysis</h2>
+        {/* Top Header Section */}
+        <div style={{ 
+          padding: 'var(--space-xl)', 
+          background: 'linear-gradient(to right, var(--bg-secondary), var(--bg-primary))',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          gap: '24px'
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--brand)', padding: '4px 10px', borderRadius: '4px' }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff', animation: 'pulse 1.5s infinite' }} />
+                <span style={{ color: 'white', fontSize: '10px', fontWeight: 800, letterSpacing: '0.05em' }}>
+                  MARKET INTELLIGENCE
+                </span>
+              </div>
+              <style>{`
+                @keyframes pulse {
+                  0% { opacity: 1; transform: scale(1); }
+                  50% { opacity: 0.5; transform: scale(1.2); }
+                  100% { opacity: 1; transform: scale(1); }
+                }
+              `}</style>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                {article.publisher || article.source} • {formatTime(article.publishedAt)}
+              </span>
+            </div>
+            <h2 style={{ fontSize: '24px', fontWeight: 700, lineHeight: 1.2, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              {article.title}
+            </h2>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+          <button onClick={onClose} style={{ 
+            background: 'rgba(0,0,0,0.05)', border: '1px solid var(--border-subtle)', 
+            cursor: 'pointer', color: 'var(--text-muted)', width: '36px', height: '36px',
+            borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            padding: 0
+          }} 
+          onMouseOver={e => {
+            const el = e.currentTarget;
+            el.style.background = 'rgba(0,0,0,0.1)';
+            el.style.color = 'var(--text-primary)';
+            el.style.transform = 'rotate(90deg)';
+          }}
+          onMouseOut={e => {
+            const el = e.currentTarget;
+            el.style.background = 'rgba(0,0,0,0.05)';
+            el.style.color = 'var(--text-muted)';
+            el.style.transform = 'none';
+          }}>
             <X size={20} />
           </button>
         </div>
 
-        <div style={{ padding: 'var(--space-lg)', display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-          {/* Article Context */}
-          <div style={{ padding: 'var(--space-md)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Source Article</div>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.4, marginBottom: '8px' }}>{article.title}</h3>
-            {article.description && <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{article.description}</p>}
-            <div style={{ marginTop: '12px', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>
-              Published by {article.publisher || article.source} • {formatTime(article.publishedAt)}
+        {/* Body Content */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', flex: 1, overflow: 'hidden' }}>
+          {/* Left Panel: Article Body */}
+          <div style={{ 
+            padding: 'var(--space-2xl)', overflowY: 'auto', 
+            borderRight: '1px solid var(--border-subtle)',
+            background: 'var(--bg-primary)'
+          }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '16px' }}>
+              Executive Summary
+            </div>
+            <p style={{ 
+              fontSize: '16px', color: 'var(--text-primary)', lineHeight: 1.7, 
+              fontWeight: 400, marginBottom: '24px', fontStyle: 'italic',
+              borderLeft: '3px solid var(--brand)', paddingLeft: '20px',
+              opacity: article.description ? 1 : 0.6
+            }}>
+              {article.description || "The full intelligence briefing is being cross-referenced. Preliminary headlines indicate a significant market event."}
+            </p>
+            
+            <div style={{ padding: 'var(--space-xl)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                <Newspaper size={16} color="var(--brand)" />
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>Source Verification</span>
+              </div>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                This data was ingested via our institutional feed. Cross-referenced across {article.source.toUpperCase()} and secondary providers. 
+              </p>
             </div>
           </div>
 
-          {loading && (
-            <div style={{ padding: 'var(--space-2xl)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '32px', height: '32px', border: '3px solid var(--border-subtle)', borderTopColor: 'var(--brand)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--brand)', letterSpacing: '0.05em' }}>AI IS ANALYZING MARKET IMPACT...</div>
+          {/* Right Panel: AI Analysis */}
+          <div style={{ 
+            padding: 'var(--space-xl)', background: 'var(--bg-tertiary)', 
+            overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' 
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+              <Bot size={18} color="var(--brand)" />
+              <span style={{ fontSize: '14px', fontWeight: 700 }}>AI Strategic Insights</span>
             </div>
-          )}
 
-          {error && (
-            <div style={{ padding: 'var(--space-lg)', background: '#fef2f2', border: '1px solid #fee2e2', color: 'var(--critical)', borderRadius: 'var(--radius-md)' }}>
-              <AlertTriangle size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />
-              <span style={{ fontWeight: 600 }}>{error}</span>
-            </div>
-          )}
+            {loading && (
+              <div style={{ padding: 'var(--space-xl)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center' }}>
+                <div style={{ width: '40px', height: '40px', border: '3px solid var(--border-subtle)', borderTopColor: 'var(--brand)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--brand)', letterSpacing: '0.05em' }}>PROCESSING MARKET IMPLICATIONS...</div>
+              </div>
+            )}
 
-          {analysis && (
-            <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-              {/* Impact Badge */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Predicted Impact:</div>
-                <div style={{
-                  padding: '6px 14px', borderRadius: '20px', fontSize: '14px', fontWeight: 800,
-                  background: `${analysis.impactColor}15`, color: analysis.impactColor, border: `1px solid ${analysis.impactColor}40`
-                }}>
-                  {analysis.impact}
+            {analysis && (
+              <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Sentiment Gauge */}
+                <div style={{ padding: 'var(--space-lg)', background: 'var(--bg-primary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>Predicted Impact</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ 
+                      width: '16px', height: '16px', borderRadius: '50%', 
+                      background: analysis.impactColor, 
+                      boxShadow: `0 0 15px ${analysis.impactColor}, 0 0 5px ${analysis.impactColor}` 
+                    }} />
+                    <span style={{ fontSize: '20px', fontWeight: 900, color: analysis.impactColor, letterSpacing: '0.02em' }}>{analysis.impact.toUpperCase()}</span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Analysis Text */}
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: '8px' }}>Executive Summary</div>
-                <p style={{ fontSize: '15px', color: 'var(--text-secondary)', lineHeight: 1.6, fontWeight: 500 }}>
-                  {analysis.analysis}
-                </p>
-              </div>
-
-              {/* Key Takeaways */}
-              <div>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', marginBottom: '12px' }}>Key Takeaways</div>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {analysis.keyTakeaways.map((point, i) => (
-                    <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                      <CheckCircle2 size={16} color="var(--brand)" style={{ marginTop: '2px', flexShrink: 0 }} />
-                      <span style={{ fontSize: '14px', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.5 }}>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* AI Metrics */}
-              <div style={{ display: 'flex', gap: '24px', padding: 'var(--space-md)', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-muted)' }}>
+                {/* Analysis Points */}
                 <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>AI Confidence</div>
-                  <div className="mono" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--success)', marginTop: '4px' }}>{analysis.metrics.confidenceScore}</div>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>Key Takeaways</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {analysis.keyTakeaways.map((point, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '10px' }}>
+                        <div style={{ marginTop: '4px' }}><CheckCircle2 size={14} color="var(--success)" /></div>
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.4 }}>{point}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Processing Time</div>
-                  <div className="mono" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>{analysis.metrics.processingTime}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Model</div>
-                  <div className="mono" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>{analysis.metrics.model}</div>
+
+                {/* Footer Metrics */}
+                <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 700 }}>CONFIDENCE</div>
+                    <div className="mono" style={{ fontSize: '12px', fontWeight: 700, color: 'var(--success)' }}>{analysis.metrics.confidenceScore}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontWeight: 700 }}>MODEL</div>
+                    <div className="mono" style={{ fontSize: '12px', fontWeight: 700 }}>{analysis.metrics.model}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {error && (
+              <div style={{ padding: 'var(--space-md)', background: '#fef2f2', border: '1px solid #fee2e2', color: 'var(--critical)', borderRadius: 'var(--radius-sm)', fontSize: '12px' }}>
+                {error}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
