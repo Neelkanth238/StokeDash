@@ -6,10 +6,12 @@ import { getWatchlist } from '@/lib/data';
 import { formatCompactCurrency, formatCurrency, formatCurrencyPrecision } from '@/lib/formatters';
 import ScoreRing from '@/components/ScoreRing';
 import PriceChart from '@/components/PriceChart';
+import InvestorsTab, { InvestorData } from '@/components/InvestorsTab';
 import {
   Search, BarChart2, FileText,
   MessageCircle, Globe, Target, AlertTriangle,
-  CheckCircle, Layers, Zap, TrendingUp, DollarSign, Activity
+  CheckCircle, Layers, Zap, TrendingUp, DollarSign, Activity,
+  Building2
 } from 'lucide-react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer
@@ -20,12 +22,13 @@ interface Props {
   market: string;
 }
 
-type Tab = 'overview' | 'technical' | 'fundamental' | 'sentiment' | 'macro' | 'recommendation';
+type Tab = 'overview' | 'technical' | 'fundamental' | 'sentiment' | 'macro' | 'recommendation' | 'investors';
 
 export default function AnalyzePage({ initialTicker, market }: Props) {
   const [inputVal, setInputVal] = useState(initialTicker || '');
   const [budget, setBudget] = useState('');
   const [data, setData] = useState<FullStockAnalysis | null>(null);
+  const [investors, setInvestors] = useState<InvestorData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -36,13 +39,25 @@ export default function AnalyzePage({ initialTicker, market }: Props) {
     if (!t) return;
     setLoading(true);
     setError(null);
+    setInvestors(null);
     try {
       const params = new URLSearchParams({ ticker: t, market: m });
       if (b) params.append('budget', b);
-      const res = await fetch(`/api/analyze?${params}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Analysis failed');
-      setData(json);
+      const [res, invRes] = await Promise.allSettled([
+        fetch(`/api/analyze?${params}`),
+        fetch(`/api/investors?ticker=${t}`),
+      ]);
+      if (res.status === 'fulfilled') {
+        const json = await res.value.json();
+        if (!res.value.ok) throw new Error(json.error || 'Analysis failed');
+        setData(json);
+      } else {
+        throw res.reason;
+      }
+      if (invRes.status === 'fulfilled') {
+        const invJson = await invRes.value.json();
+        if (invRes.value.ok && !invJson.error) setInvestors(invJson);
+      }
       setActiveTab('overview');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error');
@@ -84,6 +99,7 @@ export default function AnalyzePage({ initialTicker, market }: Props) {
     { id: 'sentiment', label: 'Sentiment', icon: MessageCircle },
     { id: 'macro', label: 'Macro', icon: Globe },
     { id: 'recommendation', label: 'Strategy', icon: Target },
+    { id: 'investors', label: 'Investors', icon: Building2 },
   ];
 
   return (
@@ -219,6 +235,7 @@ export default function AnalyzePage({ initialTicker, market }: Props) {
             {activeTab === 'sentiment' && <SentimentTab data={data} market={market} />}
             {activeTab === 'macro' && <MacroTab data={data} />}
             {activeTab === 'recommendation' && <RecommendationTab data={data} market={market} />}
+            {activeTab === 'investors' && <InvestorsTab investors={investors} ticker={data.stock.ticker} />}
           </div>
         </div>
       )}
