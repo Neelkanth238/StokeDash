@@ -177,12 +177,44 @@ function detectChartPattern(closes: number[], sma50Val: number, sma200Val: numbe
 // DATA BUILDERS
 // ═══════════════════════════════════════════════════════════════════════════
 
+async function fetchNSETradeInfo(ticker: string): Promise<{ deliveryPercent: number | null }> {
+  const symbol = ticker.replace('.NS', '').replace('.BO', '');
+  try {
+    const res = await fetch('https://www.nseindia.com/', { 
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' },
+      next: { revalidate: 300 }
+    });
+    const cookies = res.headers.get('set-cookie') || '';
+    const quoteRes = await fetch(`https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(symbol)}&section=trade_info`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Cookie': cookies
+      },
+      next: { revalidate: 300 }
+    });
+    if (!quoteRes.ok) return { deliveryPercent: null };
+    const data = await quoteRes.json();
+    if (data?.securityWiseDP?.deliveryToTradedQuantity) {
+      return { deliveryPercent: Number(data.securityWiseDP.deliveryToTradedQuantity) };
+    }
+  } catch {
+    return { deliveryPercent: null };
+  }
+  return { deliveryPercent: null };
+}
+
 export async function buildStockData(ticker: string, market: string = 'IN'): Promise<StockData> {
   const quote = await yf.quote(ticker);
   if (!quote) {
     throw new Error(`Ticker ${ticker} not found`);
   }
   const watchlist = getWatchlist(market);
+  let deliveryPercent: number | null = null;
+  if (market === 'IN') {
+    const nseInfo = await fetchNSETradeInfo(ticker);
+    deliveryPercent = nseInfo.deliveryPercent;
+  }
+  
   return {
     ticker: ticker.toUpperCase(),
     companyName: quote.longName || quote.shortName || ticker,
@@ -197,6 +229,7 @@ export async function buildStockData(ticker: string, market: string = 'IN'): Pro
     marketCap: quote.marketCap || 0,
     week52High: quote.fiftyTwoWeekHigh || 0,
     week52Low: quote.fiftyTwoWeekLow || 0,
+    deliveryPercent,
   };
 }
 
@@ -317,10 +350,146 @@ export async function buildFundamentalData(ticker: string, stock: StockData): Pr
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SENTIMENT DATA (from real analyst data)
+// NEWS FEED LOGIC
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function buildSentimentData(ticker: string, stock: StockData): Promise<SentimentData> {
+const CNBC_FEEDS: Record<string, string> = {
+  markets:    'https://www.cnbc.com/id/20910258/device/rss/rss.html',
+  finance:    'https://www.cnbc.com/id/10000664/device/rss/rss.html',
+  economy:    'https://www.cnbc.com/id/20910274/device/rss/rss.html',
+  investing:  'https://www.cnbc.com/id/15839135/device/rss/rss.html',
+  technology: 'https://www.cnbc.com/id/19854910/device/rss/rss.html',
+};
+
+function parseNewsRSS(xml: string, category: string, publisher: string) {
+  const items: any[] = [];
+  const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || [];
+  for (const block of itemMatches) {
+    const get = (tag: string) => {
+      const cdataMatch = block.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[(.*?)\\]\\]></${tag}>`, 's'));
+      if (cdataMatch) return cdataMatch[1].trim();
+      const plainMatch = block.match(new RegExp(`<${tag}[^>]*>(.*?)</${tag}>`, 's'));
+      return plainMatch ? plainMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+    };
+    const title = get('title');
+    const link  = get('link') || '';
+    const pubDate = get('pubDate') || '';
+    const description = get('description');
+    if (!title || !link) continue;
+
+    const lower = (title + ' ' + description).toLowerCase();
+    const bullWords = ['surge', 'rally', 'gain', 'rise', 'jump', 'beat', 'record', 'bull', 'soar', 'boost', 'profit', 'growth', 'recover', 'buy', 'upgrade'];
+    const bearWords = ['fall', 'drop', 'plunge', 'crash', 'loss', 'decline', 'warn', 'risk', 'sell-off', 'bear', 'cut', 'recession', 'fear', 'downgrade', 'sell'];
+    const bullScore = bullWords.filter(w => lower.includes(w)).length;
+    const bearScore = bearWords.filter(w => lower.includes(w)).length;
+    const sentiment = bullScore > bearScore ? 'positive' : bearScore > bullScore ? 'negative' : 'neutral';
+
+    items.push({
+      id: `${publisher.toLowerCase()}-${Buffer.from(link).toString('base64').slice(0, 16)}`,
+      title,
+      link,
+      description: description ? description.slice(0, 200) : '',
+      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+      publisher,
+      source: publisher.toLowerCase(),
+      category,
+      sentiment,
+    });
+  }
+  return items;
+}
+
+async function fetchRealTimeNews(ticker: string, market: string) {
+  let yahooNews: any[] = [];
+  try {
+    const query = ticker || (market === 'IN' ? '^BSESN' : market === 'EU' ? '^GDAXI' : 'SPY');
+    const result = await yf.search(query, { newsCount: 15 });
+    yahooNews = (result.news || [])
+      .filter((n: any) => n.title && n.link)
+      .map((n: any) => {
+        const lower = (n.title || '').toLowerCase();
+        const bullWords = ['surge', 'rally', 'gain', 'rise', 'jump', 'beat', 'record', 'bull', 'soar', 'boost', 'profit', 'growth', 'recover', 'buy', 'upgrade'];
+        const bearWords = ['fall', 'drop', 'plunge', 'crash', 'loss', 'decline', 'warn', 'risk', 'sell-off', 'bear', 'cut', 'recession', 'fear', 'downgrade', 'sell'];
+        const bullScore = bullWords.filter(w => lower.includes(w)).length;
+        const bearScore = bearWords.filter(w => lower.includes(w)).length;
+        const sentiment = bullScore > bearScore ? 'positive' : bearScore > bullScore ? 'negative' : 'neutral';
+
+        return {
+          id: n.uuid || `yf-${Math.random()}`,
+          title: n.title,
+          link: n.link,
+          publishedAt: n.providerPublishTime
+            ? new Date(n.providerPublishTime * 1000).toISOString()
+            : new Date().toISOString(),
+          publisher: n.publisher || 'Yahoo Finance',
+          source: 'yahoo',
+          category: 'markets',
+          sentiment,
+          description: '',
+        };
+      });
+  } catch { /* ignore */ }
+
+  let cnbcNews: any[] = [];
+  try {
+    const cnbcResults = await Promise.allSettled(
+      Object.entries(CNBC_FEEDS).map(async ([cat, url]) => {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StokeDash/1.0)' },
+          next: { revalidate: 300 },
+        });
+        if (!res.ok) return [];
+        const xml = await res.text();
+        return parseNewsRSS(xml, cat, 'CNBC');
+      })
+    );
+    for (const r of cnbcResults) {
+      if (r.status === 'fulfilled') cnbcNews.push(...r.value);
+    }
+  } catch { /* ignore */ }
+
+  let etNews: any[] = [];
+  if (market === 'IN') {
+    try {
+      const res = await fetch('https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms', {
+         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; StokeDash/1.0)' },
+         next: { revalidate: 300 },
+      });
+      if (res.ok) {
+        const xml = await res.text();
+        etNews = parseNewsRSS(xml, 'markets', 'Economic Times');
+      }
+    } catch {}
+  }
+
+  const all = [...yahooNews, ...cnbcNews, ...etNews];
+  const seen = new Set<string>();
+  let merged = all
+    .filter(a => {
+      const key = a.title.slice(0, 60);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+  if (ticker) {
+      const tickerLower = ticker.toLowerCase().replace('.ns', '').replace('.bo', '');
+      merged.sort((a, b) => {
+          const aHas = a.title.toLowerCase().includes(tickerLower) ? 1 : 0;
+          const bHas = b.title.toLowerCase().includes(tickerLower) ? 1 : 0;
+          return bHas - aHas;
+      });
+  }
+
+  return merged.slice(0, 20);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SENTIMENT DATA (from real analyst data & news)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function buildSentimentData(ticker: string, stock: StockData, market: string = 'IN'): Promise<SentimentData> {
   let quote: any;
   try {
     quote = await yf.quote(ticker);
@@ -362,13 +531,24 @@ export async function buildSentimentData(ticker: string, stock: StockData): Prom
     sentimentScore = sentimentScore * 0.6 + targetBias * 0.4;
   }
 
+  // Incorporate Real-time News into Sentiment
+  const news = await fetchRealTimeNews(ticker, market);
+  if (news.length > 0) {
+    const posNews = news.filter(n => n.sentiment === 'positive').length;
+    const negNews = news.filter(n => n.sentiment === 'negative').length;
+    const newsScore = (posNews + (news.length - posNews - negNews) * 0.5) / news.length;
+    
+    // Blend analyst sentiment and news sentiment
+    sentimentScore = sentimentScore * 0.6 + newsScore * 0.4;
+  }
+
   const overallSentiment: 'bullish' | 'neutral' | 'bearish' =
     sentimentScore >= 0.65 ? 'bullish' : sentimentScore <= 0.35 ? 'bearish' : 'neutral';
 
   return {
     overallSentiment,
     sentimentScore: +sentimentScore.toFixed(3),
-    news: [],
+    news,
     analystRating,
     analystBuyCount: buyCount,
     analystHoldCount: holdCount,
@@ -565,6 +745,13 @@ function scorePriceAction(tech: TechnicalData, stock: StockData): number {
   if (tech.volumeRatio >= 1.3 && tech.trend === 'downtrend') score -= 8;
   if (tech.volumeRatio < 0.5) score -= 3; // low conviction
 
+  // NSE Delivery Percentage (High Delivery = High Conviction)
+  if (stock.deliveryPercent != null) {
+    if (stock.deliveryPercent > 60) score += 10;
+    else if (stock.deliveryPercent > 50) score += 5;
+    else if (stock.deliveryPercent < 30) score -= 5;
+  }
+
   // Chart pattern bonus
   if (tech.chartPattern === 'Golden Cross') score += 10;
   if (tech.chartPattern === 'Death Cross') score -= 10;
@@ -735,6 +922,7 @@ function buildRecommendation(
     if (upside > 10) strengths.push(`Analyst target implies ${upside.toFixed(0)}% upside`);
   }
   if (tech.volumeRatio > 1.3) strengths.push('Above-average volume confirming trend');
+  if (stock.deliveryPercent != null && stock.deliveryPercent > 50) strengths.push(`High delivery volume (${stock.deliveryPercent}%) indicating strong investor conviction`);
   if (strengths.length === 0) strengths.push('Stable price action');
 
   // Dynamic weaknesses
@@ -745,6 +933,7 @@ function buildRecommendation(
   if (fund.debtToEquity != null && fund.debtToEquity > 100) weaknesses.push(`High debt-to-equity ratio of ${fund.debtToEquity.toFixed(0)}`);
   if (fund.revenueGrowth != null && fund.revenueGrowth < 0) weaknesses.push('Declining revenue');
   if (fund.operatingMargin != null && fund.operatingMargin < 5) weaknesses.push('Thin operating margins');
+  if (stock.deliveryPercent != null && stock.deliveryPercent < 30) weaknesses.push(`Low delivery volume (${stock.deliveryPercent}%) indicating intraday speculation`);
   if (sentiment.analystRating === 'Sell' || sentiment.analystRating === 'Strong Sell') weaknesses.push(`Analyst consensus: ${sentiment.analystRating}`);
   if (weaknesses.length === 0) weaknesses.push('No major weaknesses identified');
 
@@ -893,7 +1082,7 @@ export async function analyzeStock(ticker: string, budget?: number, market: stri
     buildFundamentalData(ticker, stock),
   ]);
   const [sentiment, macro] = await Promise.all([
-    buildSentimentData(ticker, stock),
+    buildSentimentData(ticker, stock, market),
     buildMacroData(stock.sector, market),
   ]);
   const score = computeCompositeScore(tech, fundamental, stock, sentiment, macro);
@@ -969,6 +1158,11 @@ function buildDataQuality(
   if (fund.businessSummary && fund.businessSummary !== 'N/A') sourcesAvailable.push('Business Profile');
   else sourcesMissing.push('Business Profile');
 
+  if (market === 'IN') {
+    if (stock.deliveryPercent != null) sourcesAvailable.push('NSE Delivery Data');
+    else sourcesMissing.push('NSE Delivery Data');
+  }
+
   // Detect anomalies
   if (stock.volume > 0 && stock.avgVolume > 0 && stock.volume > stock.avgVolume * 5) {
     anomaliesDetected.push('Volume spike >5x average — unusual activity');
@@ -1021,7 +1215,7 @@ export async function getTopFiveStocks(market: string = 'IN'): Promise<TopStock[
       try { fundamental = await buildFundamentalData(ticker, stock); }
       catch { fundamental = neutralFundamentals(); }
       let sentiment: SentimentData;
-      try { sentiment = await buildSentimentData(ticker, stock); }
+      try { sentiment = await buildSentimentData(ticker, stock, market); }
       catch { sentiment = neutralSentiment(stock.currentPrice); }
       const macro = await buildMacroData(stock.sector, market);
       const score = computeCompositeScore(tech, fundamental, stock, sentiment, macro);

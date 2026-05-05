@@ -101,8 +101,37 @@ export async function GET(request: Request) {
     }
   } catch { /* ignore */ }
 
+  // 2.5 NSE India Announcements
+  let nseNews: any[] = [];
+  try {
+    const res = await fetch('https://www.nseindia.com/api/corporate-announcements?index=equities', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      next: { revalidate: 300 },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        nseNews = data.slice(0, 20).map((n: any) => ({
+          id: `nse-${n.seq_id || Math.random()}`,
+          title: `${n.symbol}: ${n.desc}`,
+          link: n.attchmntFile || 'https://www.nseindia.com/companies-listing/corporate-filings-announcements',
+          publishedAt: n.sort_date ? new Date(n.sort_date.replace(' ', 'T') + '+05:30').toISOString() : new Date().toISOString(),
+          publisher: 'NSE India',
+          source: 'nseindia',
+          category: 'markets',
+          sentiment: 'neutral',
+          description: n.attchmntText || n.desc,
+        }));
+      }
+    }
+  } catch { /* ignore */ }
+
   // 3. Merge, deduplicate, and sort
-  const all = [...yahooNews, ...cnbcNews];
+  const all = [...yahooNews, ...cnbcNews, ...nseNews];
   const seen = new Set<string>();
   const merged = all
     .filter(a => {
@@ -125,7 +154,7 @@ export async function GET(request: Request) {
     negative: neg,
     neutral: sentiments.length - pos - neg,
     overallSentiment,
-    sources: { yahoo: yahooNews.length, cnbc: cnbcNews.length },
+    sources: { yahoo: yahooNews.length, cnbc: cnbcNews.length, nse: nseNews.length },
     analyzedAt: new Date().toISOString(),
   };
 

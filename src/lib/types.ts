@@ -12,6 +12,7 @@ export interface StockData {
   marketCap: number;
   week52High: number;
   week52Low: number;
+  deliveryPercent?: number | null;
 }
 
 export interface TechnicalData {

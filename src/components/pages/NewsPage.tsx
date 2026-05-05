@@ -17,7 +17,7 @@ interface NewsArticle {
   publisher: string;
   link: string;
   publishedAt: string;
-  source: 'yahoo' | 'cnbc' | string;
+  source: 'yahoo' | 'cnbc' | 'nseindia' | string;
   category: string;
   sentiment: 'positive' | 'neutral' | 'negative';
   description?: string;
@@ -29,7 +29,7 @@ interface NewsSummary {
   negative: number;
   neutral: number;
   overallSentiment: 'bullish' | 'neutral' | 'bearish';
-  sources: { yahoo: number; cnbc: number };
+  sources: { yahoo: number; cnbc: number; nse?: number };
   analyzedAt: string;
 }
 
@@ -122,6 +122,7 @@ function MarketPulseCard({ summary }: { summary: NewsSummary }) {
           { label: 'Total Articles', val: summary.total, icon: Newspaper },
           { label: 'From Yahoo', val: summary.sources.yahoo, icon: BarChart2 },
           { label: 'From CNBC', val: summary.sources.cnbc, icon: Radio },
+          { label: 'From NSE', val: summary.sources.nse || 0, icon: Activity },
         ].map(s => (
           <div key={s.label} style={{ textAlign: 'center' }}>
             <s.icon size={14} color="var(--text-muted)" style={{ marginBottom: '4px' }} />
@@ -137,6 +138,7 @@ function MarketPulseCard({ summary }: { summary: NewsSummary }) {
 function NewsCard({ item, onClick }: { item: NewsArticle; onClick: () => void }) {
   const sentCfg = SENTIMENT_CONFIG[item.sentiment] || SENTIMENT_CONFIG.neutral;
   const isCNBC = item.source === 'cnbc';
+  const isNSE = item.source === 'nseindia';
 
   return (
     <div
@@ -192,10 +194,10 @@ function NewsCard({ item, onClick }: { item: NewsArticle; onClick: () => void })
             <span style={{
               fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
               padding: '2px 7px', borderRadius: '3px',
-              background: isCNBC ? '#CC0000' : '#6001D2',
+              background: isCNBC ? '#CC0000' : isNSE ? '#0047AB' : '#6001D2',
               color: 'white',
             }}>
-              {isCNBC ? 'CNBC' : 'Yahoo'}
+              {isCNBC ? 'CNBC' : isNSE ? 'NSE' : 'Yahoo'}
             </span>
             <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
               {item.publisher || item.source}
@@ -355,7 +357,7 @@ export default function NewsPage({ market }: Props) {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [category, setCategory] = useState('all');
-  const [source, setSource]     = useState<'all' | 'cnbc' | 'yahoo'>('all');
+  const [source, setSource]     = useState<'all' | 'cnbc' | 'yahoo' | 'nseindia'>('all');
   
   // State for AI Analysis Modal
   const [analyzingArticle, setAnalyzingArticle] = useState<NewsArticle | null>(null);
@@ -405,7 +407,7 @@ export default function NewsPage({ market }: Props) {
             Live Market Intelligence
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '8px', fontSize: '14px', fontWeight: 500 }}>
-            Real-time financial news from <span style={{ color: '#CC0000', fontWeight: 700 }}>CNBC</span> + <span style={{ color: '#6001D2', fontWeight: 700 }}>Yahoo Finance</span> analyzed by AI
+            Real-time financial news from <span style={{ color: '#CC0000', fontWeight: 700 }}>CNBC</span>, <span style={{ color: '#0047AB', fontWeight: 700 }}>NSE India</span> + <span style={{ color: '#6001D2', fontWeight: 700 }}>Yahoo Finance</span> analyzed by AI
           </p>
         </div>
         <button className="btn" onClick={fetchNews} style={{ padding: '10px 16px', gap: '8px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
@@ -425,16 +427,16 @@ export default function NewsPage({ market }: Props) {
         </div>
         {/* Source */}
         <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-tertiary)', padding: '3px', borderRadius: 'var(--radius-sm)' }}>
-          {(['all', 'cnbc', 'yahoo'] as const).map(s => (
+          {(['all', 'cnbc', 'yahoo', 'nseindia'] as const).map(s => (
             <button key={s} onClick={() => setSource(s)} className="btn" style={{
               padding: '5px 14px', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase',
               background: source === s ? 'var(--bg-card)' : 'transparent',
               boxShadow: source === s ? 'var(--shadow-sm)' : 'none',
               color: source === s
-                ? (s === 'cnbc' ? '#CC0000' : s === 'yahoo' ? '#6001D2' : 'var(--text-primary)')
+                ? (s === 'cnbc' ? '#CC0000' : s === 'yahoo' ? '#6001D2' : s === 'nseindia' ? '#0047AB' : 'var(--text-primary)')
                 : 'var(--text-muted)',
             }}>
-              {s === 'all' ? 'All Sources' : s.toUpperCase()}
+              {s === 'all' ? 'All Sources' : s === 'nseindia' ? 'NSE' : s.toUpperCase()}
             </button>
           ))}
         </div>
@@ -495,7 +497,7 @@ export default function NewsPage({ market }: Props) {
       {/* Footer attribution */}
       {!loading && displayed.length > 0 && (
         <div style={{ marginTop: 'var(--space-2xl)', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
-          Data sourced from <a href="https://www.cnbc.com/markets/" target="_blank" rel="noopener noreferrer" style={{ color: '#CC0000', textDecoration: 'none' }}>CNBC Markets</a> &amp; Yahoo Finance · Analyzed by AI models
+          Data sourced from <a href="https://www.cnbc.com/markets/" target="_blank" rel="noopener noreferrer" style={{ color: '#CC0000', textDecoration: 'none' }}>CNBC Markets</a>, <a href="https://www.nseindia.com/" target="_blank" rel="noopener noreferrer" style={{ color: '#0047AB', textDecoration: 'none' }}>NSE India</a> &amp; Yahoo Finance · Analyzed by AI models
         </div>
       )}
     </div>
